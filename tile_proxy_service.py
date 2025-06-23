@@ -126,11 +126,11 @@ class TileConfig:
 
 config = TileConfig()
 
-def build_tile_url(style: str, x: int, y: int, z: int, r: str = "@1x") -> Optional[str]:
+def build_tile_url(style: str, x: int, y: int, z: int, lang: str = "int", r: str = "@1x") -> Optional[str]:
     """Build tile URL based on style"""
     
     # URL templates
-    jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}{r}.png?access-token={config.jawg_key}"
+    jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}{r}.png?access-token={config.jawg_key}&lang={lang}&raster=false"
     thunderforest_url = f"https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey={config.thunderforest_key}"
     
     style_mapping = {
@@ -197,11 +197,13 @@ async def fetch_tile_from_source(url: str) -> tuple[int, Optional[bytes]]:
 
 @app.get("/tile/{style}/{x}/{y}/{z}")
 @app.get("/tile/{style}/{x}/{y}/{z}/{r}")
+@app.get("/tile/{style}/{x}/{y}/{z}/{lang}/{r}")
 async def get_tile(
     style: str, 
     z: int, 
     x: int, 
-    y: int, 
+    y: int,
+    lang: str = "int",
     r: str = "@1x"
 ):
     """Get tile with caching"""
