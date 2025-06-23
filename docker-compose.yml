@@ -3,8 +3,6 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - JAWG_API_KEY=${JAWG_API_KEY}
@@ -14,12 +12,18 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
+    networks:
+      - reverse_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tiles.entrypoints=websecure"
+      - "traefik.http.routers.tiles.rule=Host(`tiles.trainlog.me`)"
+      - "traefik.http.routers.tiles.tls=true"
+      - "traefik.http.routers.tiles.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tiles.loadbalancer.server.port=8000"
+    # Remove the 'ports' section if only accessed via Traefik
+    # ports:
+    #   - "8000:8000"
 
   redis:
     image: redis:7-alpine
@@ -30,7 +34,6 @@ services:
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     restart: unless-stopped
 
-  # Optional: Redis monitoring
   redis-commander:
     image: rediscommander/redis-commander:latest
     environment:
@@ -44,3 +47,7 @@ services:
 
 volumes:
   redis_data:
+
+networks:
+  reverse_proxy:
+    external: true
