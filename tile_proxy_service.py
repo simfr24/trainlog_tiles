@@ -121,7 +121,7 @@ class TileConfig:
     def __init__(self):
         self.jawg_key = os.getenv("JAWG_API_KEY", "")
         self.thunderforest_key = os.getenv("THUNDERFOREST_API_KEY", "")
-        self.cache_ttl = int(os.getenv("CACHE_TTL", "3600"))  # 1 hour default
+        self.cache_ttl = int(os.getenv("CACHE_TTL", "864000"))  # 1 hour default
         self.max_tile_size = int(os.getenv("MAX_TILE_SIZE", "1048576"))  # 1MB default
 
 config = TileConfig()
@@ -220,7 +220,7 @@ async def get_tile(
             content=cached_tile,
             media_type="image/png",
             headers={
-                "Cache-Control": "public, max-age=3600",
+                "Cache-Control": "public, max-age=864000",
                 "X-Cache": "HIT",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
@@ -244,7 +244,7 @@ async def get_tile(
             content=tile_data,
             media_type="image/png",
             headers={
-                "Cache-Control": "public, max-age=3600",
+                "Cache-Control": "public, max-age=864000",
                 "X-Cache": "MISS",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
