@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import os
 import json
-from typing import Optional
+from typing import Optional, Tuple
 import logging
 from contextlib import asynccontextmanager
 import time
@@ -121,16 +121,26 @@ class TileConfig:
     def __init__(self):
         self.jawg_key = os.getenv("JAWG_API_KEY", "")
         self.thunderforest_key = os.getenv("THUNDERFOREST_API_KEY", "")
-        self.cache_ttl = int(os.getenv("CACHE_TTL", "864000"))  # 1 hour default
+        self.cache_ttl = int(os.getenv("CACHE_TTL", "864000"))  # 10 days default
         self.max_tile_size = int(os.getenv("MAX_TILE_SIZE", "1048576"))  # 1MB default
 
 config = TileConfig()
 
-def build_tile_url(style: str, x: int, y: int, z: int, lang: str = "int", r: str = "@1x") -> Optional[str]:
+def get_tile_format(style: str) -> Tuple[str, str]:
+    """Get tile format and media type based on style"""
+    # Vector tiles (PBF format)
+    if style in ["streets-v2"]:
+        return "pbf", "application/octet-stream"
+    # Raster tiles (PNG format)
+    else:
+        return "png", "image/png"
+
+def build_tile_url(style: str, z: int, x: int, y: int, lang: str = "int") -> Optional[str]:
     """Build tile URL based on style"""
     
     # URL templates
-    jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}{r}.png?access-token={config.jawg_key}&lang={lang}&raster=false"
+    jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}@1x.png?access-token={config.jawg_key}&lang={lang}"
+    jawg_vector_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}.pbf?access-token={config.jawg_key}&lang={lang}"
     thunderforest_url = f"https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey={config.thunderforest_key}"
     
     style_mapping = {
@@ -140,6 +150,7 @@ def build_tile_url(style: str, x: int, y: int, z: int, lang: str = "int", r: str
         "jawg-light": jawg_url,
         "jawg-terrain": jawg_url,
         "jawg-dark": jawg_url,
+        "streets-v2": jawg_vector_url,
         "thunderforest-transport": thunderforest_url,
     }
     
@@ -171,7 +182,7 @@ async def cache_tile(cache_key: str, tile_data: bytes, ttl: int = None):
     except Exception as e:
         logger.error(f"Cache write error: {e}")
 
-async def fetch_tile_from_source(url: str) -> tuple[int, Optional[bytes]]:
+async def fetch_tile_from_source(url: str, tile_format: str) -> tuple[int, Optional[bytes], Optional[str]]:
     """Fetch tile from external source"""
     try:
         async with http_session.get(url) as response:
@@ -181,30 +192,31 @@ async def fetch_tile_from_source(url: str) -> tuple[int, Optional[bytes]]:
                 # Validate tile size
                 if len(content) > config.max_tile_size:
                     logger.warning(f"Tile too large: {len(content)} bytes")
-                    return 413, None  # Payload too large
+                    return 413, None, None  # Payload too large
+                
+                # Get content encoding from response
+                content_encoding = response.headers.get('Content-Encoding')
                     
-                return 200, content
+                return 200, content, content_encoding
             else:
                 logger.warning(f"Upstream error: {response.status} for {url}")
-                return response.status, None
+                return response.status, None, None
                 
     except asyncio.TimeoutError:
         logger.error(f"Timeout fetching: {url}")
-        return 504, None
+        return 504, None, None
     except Exception as e:
         logger.error(f"Error fetching {url}: {e}")
-        return 500, None
+        return 500, None, None
 
 @app.get("/tile/{style}/{x}/{y}/{z}")
-@app.get("/tile/{style}/{x}/{y}/{z}/{r}")
-@app.get("/tile/{style}/{x}/{y}/{z}/{lang}/{r}")
+@app.get("/tile/{style}/{x}/{y}/{z}/{lang}")
 async def get_tile(
     style: str, 
     z: int, 
     x: int, 
     y: int,
-    lang: str = "int",
-    r: str = "@1x"
+    lang: str = "int"
 ):
     """Get tile with caching"""
     
@@ -212,15 +224,18 @@ async def get_tile(
     if not (0 <= z <= 20):
         raise HTTPException(status_code=400, detail="Invalid zoom level")
     
-    # Create cache key
-    cache_key = f"tile:{style}:{z}:{x}:{y}:{r}"
+    # Get tile format and media type
+    tile_format, media_type = get_tile_format(style)
+    
+    # Create cache key (include format and lang to avoid conflicts)
+    cache_key = f"tile:{style}:{z}:{x}:{y}:{lang}:{tile_format}"
     
     # Try cache first
     cached_tile = await get_cached_tile(cache_key)
     if cached_tile:
         return Response(
             content=cached_tile,
-            media_type="image/png",
+            media_type=media_type,
             headers={
                 "Cache-Control": "public, max-age=864000",
                 "X-Cache": "HIT",
@@ -231,27 +246,30 @@ async def get_tile(
         )
     
     # Build source URL
-    tile_url = build_tile_url(style, x, y, z, r)
+    tile_url = build_tile_url(style, z, x, y, lang)
     if not tile_url:
         raise HTTPException(status_code=400, detail="Unknown tile style")
     
     # Fetch from source
-    status_code, tile_data = await fetch_tile_from_source(tile_url)
+    status_code, tile_data, content_encoding = await fetch_tile_from_source(tile_url, tile_format)
     
     if status_code == 200 and tile_data:
         # Cache the tile
         await cache_tile(cache_key, tile_data)
         
+        # Prepare headers
+        headers = {
+            "Cache-Control": "public, max-age=864000",
+            "X-Cache": "MISS",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*"
+        }
+        
         return Response(
             content=tile_data,
-            media_type="image/png",
-            headers={
-                "Cache-Control": "public, max-age=864000",
-                "X-Cache": "MISS",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                "Access-Control-Allow-Headers": "*"
-            }
+            media_type=media_type,
+            headers=headers
         )
     else:
         raise HTTPException(
@@ -287,6 +305,9 @@ async def health_check():
 async def cache_stats():
     """Cache statistics"""
     try:
+        if not redis_client:
+            raise HTTPException(status_code=503, detail="Redis not connected")
+            
         info = await redis_client.info()
         return {
             "redis_version": info.get("redis_version"),
@@ -303,6 +324,9 @@ async def cache_stats():
 async def clear_cache():
     """Clear tile cache (admin endpoint)"""
     try:
+        if not redis_client:
+            raise HTTPException(status_code=503, detail="Redis not connected")
+            
         # Only clear tile keys
         keys = await redis_client.keys("tile:*")
         if keys:
