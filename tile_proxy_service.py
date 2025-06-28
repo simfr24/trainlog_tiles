@@ -129,7 +129,7 @@ config = TileConfig()
 def get_tile_format(style: str) -> Tuple[str, str]:
     """Get tile format and media type based on style"""
     # Vector tiles (PBF format)
-    if style in ["streets-v2"]:
+    if "streets-v2" in style:
         return "pbf", "application/octet-stream"
     # Raster tiles (PNG format)
     else:
@@ -140,7 +140,7 @@ def build_tile_url(style: str, z: int, x: int, y: int, lang: str = "int") -> Opt
     
     # URL templates
     jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}@1x.png?access-token={config.jawg_key}&lang={lang}"
-    jawg_vector_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}.pbf?access-token={config.jawg_key}&lang={lang}"
+    jawg_vector_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}.pbf?access-token={config.jawg_key}"
     thunderforest_url = f"https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey={config.thunderforest_key}"
     style_mapping = {
         "jawg-streets": jawg_url,
@@ -228,7 +228,10 @@ async def get_tile(
     tile_format, media_type = get_tile_format(style)
     
     # Create cache key (include format and lang to avoid conflicts)
-    cache_key = f"tile:{style}:{z}:{x}:{y}:{lang}:{tile_format}"
+    if tile_format == "pbf":
+        cache_key = f"tile:{style}:{z}:{x}:{y}:{tile_format}"
+    else:
+        cache_key = f"tile:{style}:{z}:{x}:{y}:{lang}:{tile_format}"
     
     # Try cache first
     cached_tile = await get_cached_tile(cache_key)
