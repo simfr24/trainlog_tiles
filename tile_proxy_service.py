@@ -142,7 +142,6 @@ def build_tile_url(style: str, z: int, x: int, y: int, lang: str = "int") -> Opt
     jawg_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}@1x.png?access-token={config.jawg_key}&lang={lang}"
     jawg_vector_url = f"https://tile.jawg.io/{style}/{z}/{x}/{y}.pbf?access-token={config.jawg_key}&lang={lang}"
     thunderforest_url = f"https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey={config.thunderforest_key}"
-    
     style_mapping = {
         "jawg-streets": jawg_url,
         "jawg-lagoon": jawg_url,
@@ -150,6 +149,7 @@ def build_tile_url(style: str, z: int, x: int, y: int, lang: str = "int") -> Opt
         "jawg-light": jawg_url,
         "jawg-terrain": jawg_url,
         "jawg-dark": jawg_url,
+        "streets-v2+landcover-v1.1+hillshade-v1": jawg_vector_url,
         "streets-v2": jawg_vector_url,
         "thunderforest-transport": thunderforest_url,
     }
