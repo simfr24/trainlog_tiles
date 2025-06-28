@@ -1,0 +1,39 @@
+services:
+  tile-proxy:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - JAWG_API_KEY=${JAWG_API_KEY}
+      - THUNDERFOREST_API_KEY=${THUNDERFOREST_API_KEY}
+      - CACHE_TTL=3600
+      - MAX_TILE_SIZE=1048576
+    depends_on:
+      - redis
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # Expose locally on http://localhost:8000
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - monitoring
+
+volumes:
+  redis_data:
